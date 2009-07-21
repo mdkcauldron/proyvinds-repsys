@@ -1,6 +1,7 @@
 #!/usr/bin/python
 from RepSys import Error, config
 from RepSys import mirror, layout, log
+from RepSys.git import GIT
 from RepSys.svn import SVN
 from RepSys.simplerpm import SRPM
 from RepSys.util import execcmd
@@ -465,7 +466,7 @@ def clone(pkgdirurl, path=None, branch=None,
         distro=None):
     o_pkgdirurl = pkgdirurl
     pkgdirurl = layout.package_url(o_pkgdirurl, distro=distro)
-    current = layout.clone_url(pkgdirurl, branch=branch)
+    current = layout.checkout_url(pkgdirurl, branch=branch)
     if path is None:
         path = layout.package_name(pkgdirurl)
     mirror.info(current)

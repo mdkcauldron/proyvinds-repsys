@@ -107,8 +107,7 @@ class VCS(object):
  
     def clone(self, url, targetpath, **kwargs):
         if self.vcs_supports['clone']:
-            cmd = ["checkout", "'%s'" % url, targetpath]
-            self._add_revision(cmd, kwargs, optional=1)
+            cmd = ["clone", "'%s'" % url, targetpath]
             return self._execVcs_success(*cmd, **kwargs)
         else:
             raise Error, "%s doesn't support 'clone'" % self.vcs_name

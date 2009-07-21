@@ -1,7 +1,7 @@
 #!/usr/bin/python
 from RepSys import Error
 from RepSys.command import *
-from RepSys.rpmutil import checkout
+from RepSys.rpmutil import clone
 import getopt
 import sys
 
@@ -46,6 +46,6 @@ def parse_options():
     return opts
 
 def main():
-    do_command(parse_options, checkout)
+    do_command(parse_options, clone)
 
 # vim:et:ts=4:sw=4
