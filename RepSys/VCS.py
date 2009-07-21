@@ -19,6 +19,7 @@ class VCS(object):
     def __init__(self):
         self.vcs_name = None
         self.vcs_command = None
+        self.vcs_supports = {'clone' : False}
 
     def _execVcs(self, *args, **kwargs):
         localcmds = ("add", "revert", "cleanup")
@@ -104,6 +105,14 @@ class VCS(object):
         self._add_revision(cmd, kwargs, optional=1)
         return self._execVcs_success(*cmd, **kwargs)
  
+    def clone(self, url, targetpath, **kwargs):
+        if self.vcs_supports['clone']:
+            cmd = ["checkout", "'%s'" % url, targetpath]
+            self._add_revision(cmd, kwargs, optional=1)
+            return self._execVcs_success(*cmd, **kwargs)
+        else:
+            raise Error, "%s doesn't support 'clone'" % self.vcs_name
+
     def propset(self, propname, value, targets, **kwargs):
         cmd = ["propset", propname, "'%s'" % value, targets]
         return self._execVcs_success(*cmd, **kwargs)
