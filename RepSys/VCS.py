@@ -1,4 +1,4 @@
-from RepSys import Error, config
+from RepSys import Error, SilentError, config
 from RepSys.util import execcmd, get_auth
 import sys
 import re
@@ -19,28 +19,67 @@ class VCS(object):
     def __init__(self):
         self.vcs_name = None
         self.vcs_command = None
+        self.vcs_wrapper = "repsys-ssh"
         self.vcs_supports = {'clone' : False}
+        self.env_defaults = None
 
     def _execVcs(self, *args, **kwargs):
         localcmds = ("add", "revert", "cleanup")
         if not kwargs.get("show") and args[0] not in localcmds:
             args = list(args)
             args.append("--non-interactive")
+        else:
+            kwargs["geterr"] = True
+        kwargs["cleanerr"] = True
         cmdstr = self.vcs_command + " " + " ".join(args)
         try:
             return execcmd(cmdstr, **kwargs)
         except Error, e:
+            msg = None
             if e.args:
                 if "Permission denied" in e.args[0]:
-                    raise Error, ("%s\n"
-                            "Seems ssh-agent or ForwardAgent are not setup, see "
-                            "http://wiki.mandriva.com/en/Development/Docs/Contributor_Tricks#SSH_configuration"
-                            " for more information." % e)
+                    msg = ("It seems ssh-agent or ForwardAgent are not setup "
+                           "or your username is wrong. See "
+                           "http://wiki.mandriva.com/en/Development/Docs/Contributor_Tricks#SSH_configuration"
+                           " for more information.")
                 elif "authorization failed" in e.args[0]:
-                    raise Error, ("%s\n"
-                            "Note that repsys does not support any HTTP "
-                            "authenticated access." % e)
+                    msg = ("Note that repsys does not support any HTTP "
+                           "authenticated access.")
+            if kwargs.get("show") and \
+                    not config.getbool("global", "verbose", 0):
+                # svn has already dumped error messages, we don't need to
+                # do it too
+                if msg:
+                    sys.stderr.write("\n")
+                    sys.stderr.write(msg)
+                    sys.stderr.write("\n")
+                raise SilentError
+            elif msg:
+                raise Error, "%s\n%s" % (e, msg)
             raise
+
+    def _set_env(self):
+        wrapper = "repsys-ssh"
+        repsys = config.get("global", "repsys-cmd")
+        if repsys:
+            dir = os.path.dirname(repsys)
+            path = os.path.join(dir, wrapper)
+            if os.path.exists(path):
+                wrapper = path
+        defaults = {"SVN_SSH": wrapper}
+        os.environ.update(defaults)
+        raw = config.get("global", "svn-env")
+        if raw:
+            for line in raw.split("\n"):
+                env = line.strip()
+                if not env:
+                    continue
+                try:
+                    name, value = env.split("=", 1)
+                except ValueError:
+                    sys.stderr.write("invalid svn environment line: %r\n" % env)
+                    continue
+                os.environ[name] = value
 
     def _execVcs_success(self, *args, **kwargs):
         status, output = self._execVcs(*args, **kwargs)

@@ -13,9 +13,9 @@ class GIT(VCS):
     def __init__(self):
         VCS.__init__(self)
         self.vcs_name = "git"
-        self.vcs_command = config.get("global", "git-command",
-                        "GIT_SSH='ssh -o \"BatchMode yes\"' git")
+        self.vcs_command = config.get("global", "git-command", "git")
         self.vcs_supports['clone'] = True
+        self.env_defaults = {"GIT_SSH": self.vcs_wrapper}
 
     def clone(self, url, targetpath, **kwargs):
         if url.split(':')[0].find("svn") < 0:
