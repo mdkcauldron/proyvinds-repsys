@@ -1,18 +1,8 @@
 #!/usr/bin/python
 #
-# This program will extract given version/revision of the named package
-# from the Conectiva Linux repository system.
-#
-from RepSys import Error, config
-from RepSys.command import *
-from RepSys.layout import package_url
+from RepSys.command import do_command
 from RepSys.rpmutil import build_rpm
-import tempfile
-import shutil
 from optparse import *
-import glob
-import sys
-import os
 
 HELP = """\
 Usage: repsys buildrpm [OPTIONS]
