@@ -15,6 +15,7 @@ http://wiki.mandriva.com/en/Development/Packaging/RepositorySystem/Quickstart
 
 Useful commands:
     co            checkout a package
+    clone         clone a package
     ci            commit changes
     sync          add-remove all file changes from the .spec
     submit        submit a package for build

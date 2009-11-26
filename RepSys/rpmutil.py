@@ -1,6 +1,7 @@
 #!/usr/bin/python
 from RepSys import Error, config
 from RepSys import mirror, layout, log
+from RepSys.git import GIT
 from RepSys.svn import SVN
 from RepSys.simplerpm import SRPM
 from RepSys.util import execcmd
@@ -13,6 +14,7 @@ import string
 import glob
 import sys
 import os
+from time import time
 
 def get_spec(pkgdirurl, targetdir=".", submit=False):
     svn = SVN()
@@ -334,6 +336,54 @@ def put_srpm(srpmfile, markrelease=False, striplog=True, branch=None,
                  log="Copying release %s-%s to releases/ directory." %
                      (version, srpm.release))
 
+def build_rpm(build_cmd="a",
+        verbose=False,
+        rpmlint=True,
+        packager = "",
+        macros = []):
+    top = os.getcwdu()
+    topdir = "--define '_topdir %s'" % top
+    builddir = "--define '_builddir %s/%s'" % (top, "BUILD")
+    rpmdir = "--define '_rpmdir %s/%s'" % (top, "RPMS")
+    sourcedir = "--define '_sourcedir %s/%s'" % (top, "SOURCES")
+    specdir = "--define '_specdir %s/%s'" % (top, "SPECS")
+    srcrpmdir = "--define '_srcrpmdir %s/%s'" % (top, "SRPMS")
+    patchdir = "--define '_patchdir %s/%s'" % (top, "SOURCES")
+
+    build = os.path.join(top, "BUILD")
+    if not os.path.exists(build):
+        os.mkdir(build)
+    specsdir = os.path.join(top, "SPECS")
+    speclist = glob.glob(os.path.join(specsdir, "*.spec"))
+    if not speclist:
+        raise Error, "no spec files found"
+    spec = speclist[0]
+    if packager:
+        packager = " --define 'packager %s'" % packager
+        
+    defs = rpm_macros_defs(macros)
+    rpmbuild = config.get("helper", "rpmbuild", "rpmbuild")
+    begintime = time()
+    execcmd("LC_ALL=C %s -b%s %s %s %s %s %s %s %s %s %s %s" %
+            (rpmbuild, build_cmd, topdir, builddir, rpmdir, sourcedir, specdir,
+                srcrpmdir, patchdir, packager, spec, defs), show=verbose)
+    endtime = time()
+
+    if rpmlint:
+        status, output = execcmd("rpm %s %s --define 'debug_package_and_restore %%{debug_package}' --define '_query_all_fmt %%{_srcrpmdir}/%%{SOURCERPM} %%{_rpmdir}/%%{_build_name_fmt}' -q --specfile %s" % (rpmdir, srcrpmdir, spec))
+        checklist = []
+        for ps in output.split("\n"):
+            for p in ps.split():
+                if p not in checklist and os.path.exists(p):
+                    # We assume that only packages with matching filename and
+                    # that has been built since we invoked rpmbuild belongs to
+                    # this build and should be checked
+                    stat = os.stat(p)
+                    if stat.st_ctime > begintime and stat.st_ctime < endtime:
+                        checklist.append(p)
+        if checklist:
+            execcmd("rpmlint %s" % string.join(checklist), show=True)
+
 def create_package(pkgdirurl, log="", verbose=0):
     svn = SVN()
     tmpdir = tempfile.mktemp()
@@ -472,10 +522,21 @@ def checkout(pkgdirurl, path=None, revision=None, branch=None,
     svn = SVN()
     svn.checkout(current, path, rev=revision, show=1)
 
+def clone(pkgdirurl, path=None, branch=None,
+        distro=None):
+    o_pkgdirurl = pkgdirurl
+    pkgdirurl = layout.package_url(o_pkgdirurl, distro=distro)
+    current = layout.checkout_url(pkgdirurl, branch=branch)
+    if path is None:
+        path = layout.package_name(pkgdirurl)
+    mirror.info(current)
+    git = GIT()
+    git.clone(current, path, show=1)
+
 def _getpkgtopdir(basedir=None):
     if basedir is None:
-        basedir = os.getcwd()
-    cwd = os.getcwd()
+        basedir = os.getcwdu()
+    cwd = os.getcwdu()
     dirname = os.path.basename(cwd)
     if dirname == "SPECS" or dirname == "SOURCES":
         topdir = os.pardir
