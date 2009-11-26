@@ -14,6 +14,7 @@ import string
 import glob
 import sys
 import os
+from time import time
 
 def get_spec(pkgdirurl, targetdir=".", submit=False):
     svn = SVN()
@@ -330,6 +331,7 @@ def put_srpm(srpmfile, markrelease=False, striplog=True, branch=None,
 
 def build_rpm(build_cmd="a",
         verbose=False,
+        rpmlint=True,
         packager = "",
         macros = []):
     top = os.getcwdu()
@@ -354,9 +356,26 @@ def build_rpm(build_cmd="a",
         
     defs = rpm_macros_defs(macros)
     rpmbuild = config.get("helper", "rpmbuild", "rpmbuild")
+    begintime = time()
     execcmd("LC_ALL=C %s -b%s %s %s %s %s %s %s %s %s %s %s" %
             (rpmbuild, build_cmd, topdir, builddir, rpmdir, sourcedir, specdir,
                 srcrpmdir, patchdir, packager, spec, defs), show=verbose)
+    endtime = time()
+
+    if rpmlint:
+        status, output = execcmd("rpm %s %s --define 'debug_package_and_restore %%{debug_package}' --define '_query_all_fmt %%{_srcrpmdir}/%%{SOURCERPM} %%{_rpmdir}/%%{_build_name_fmt}' -q --specfile %s" % (rpmdir, srcrpmdir, spec))
+        checklist = []
+        for ps in output.split("\n"):
+            for p in ps.split():
+                if p not in checklist and os.path.exists(p):
+                    # We assume that only packages with matching filename and
+                    # that has been built since we invoked rpmbuild belongs to
+                    # this build and should be checked
+                    stat = os.stat(p)
+                    if stat.st_ctime > begintime and stat.st_ctime < endtime:
+                        checklist.append(p)
+        if checklist:
+            execcmd("rpmlint %s" % string.join(checklist), show=True)
 
 def create_package(pkgdirurl, log="", verbose=0):
     svn = SVN()
