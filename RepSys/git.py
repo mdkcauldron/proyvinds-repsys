@@ -1,9 +1,13 @@
 from RepSys import Error, config
-from RepSys.util import execcmd, get_auth
+from RepSys.util import commands_getstatusoutput, execcmd, get_auth
 from RepSys.VCS import *
+from os.path import basename, dirname
+from os import chdir, getcwd
 import sys
 import re
 import time
+from xml.etree import cElementTree as ElementTree
+import subprocess
 
 class GITLogEntry(VCSLogEntry):
     def __init__(self, revision, author, date):
@@ -21,9 +25,30 @@ class GIT(VCS):
         if url.split(':')[0].find("svn") < 0:
             return VCS.clone(self, url, targetpath, **kwargs)
         else:
-            cmd = ["svn", "clone", "'%s'" % url, targetpath]
-            return self._execVcs_success(*cmd, **kwargs)
+            # To speed things up on huge repositories, we'll just grab all the
+            # revision numbers for this specific directory and grab these only
+            # in stead of having to go through each and every revision...
+            retval, result = commands_getstatusoutput("svn log --stop-on-copy --xml %s" % url)
+            if retval:
+                return retval
+            parser = ElementTree.XMLTreeBuilder()
+            result = "".join(result.split("\n"))
+            parser.feed(result)
+            log = parser.close()
+            logentries = log.getiterator("logentry")
+            revisions = []
+            topurl = dirname(url)
+            trunk = basename(url)
+            tags = "releases"
+            execcmd("git svn init %s --trunk=%s --tags=%s %s" % (topurl, trunk, tags, targetpath), show=True)
+            chdir(targetpath)
+            for entry in logentries:
+                revisions.append(entry.attrib["revision"])
+            while revisions:
+                execcmd("git svn fetch -r%d" % int(revisions.pop()), show=True)
 
+            cmd = ["svn", "rebase"]
+            return self._execVcs_success(*cmd, **kwargs)
 
 class SVNLook(VCSLook):
     def __init__(self, repospath, txn=None, rev=None):
