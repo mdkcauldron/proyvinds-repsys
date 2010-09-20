@@ -1,6 +1,6 @@
 #!/usr/bin/python
 from RepSys import Error, config
-from RepSys import mirror, layout, log
+from RepSys import mirror, layout, log, cgiutil
 from RepSys.git import GIT
 from RepSys.svn import SVN
 from RepSys.simplerpm import SRPM
@@ -28,6 +28,9 @@ def get_spec(pkgdirurl, targetdir=".", submit=False):
             raise Error, "no spec files found"
         spec = speclist[0]
         shutil.copy(spec, targetdir)
+        name = os.path.basename(spec)
+        path = os.path.join(targetdir, name)
+        print "Wrote %s" % (name)
     finally:
         if os.path.isdir(tmpdir):
             shutil.rmtree(tmpdir)
@@ -66,6 +69,7 @@ def get_srpm(pkgdirurl,
              scripts = [], 
              submit = False,
              template = None,
+             distro = None,
              macros = [],
              verbose = 0,
              strict = False):
@@ -78,6 +82,7 @@ def get_srpm(pkgdirurl,
     specdir = "--define '_specdir %s/%s'" % (tmpdir, "SPECS")
     srcrpmdir = "--define '_srcrpmdir %s/%s'" % (tmpdir, "SRPMS")
     patchdir = "--define '_patchdir %s/%s'" % (tmpdir, "SOURCES")
+    temppath = "--define '_tmppath %s'" % (tmpdir)
 
     try:
         if mode == "version":
@@ -122,11 +127,19 @@ def get_srpm(pkgdirurl,
         if packager:
             packager = " --define 'packager %s'" % packager
 
+        if distro:
+            cmpdistro = distro.lower()
+            for target in cgiutil.get_targets():
+                if target.name.lower() == cmpdistro:
+                    macros.extend(target.macros)
+                    break
+            else:
+                raise Error, "no such submit target in configuration: %s" % (distro)
         defs = rpm_macros_defs(macros)
         sourcecmd = config.get("helper", "rpmbuild", "rpmbuild")
-        execcmd("%s -bs --nodeps %s %s %s %s %s %s %s %s %s %s" %
+        execcmd("%s -bs --nodeps %s %s %s %s %s %s %s %s %s %s %s" %
             (sourcecmd, topdir, builddir, rpmdir, sourcedir, specdir,
-                srcrpmdir, patchdir, packager, spec, defs))
+                srcrpmdir, patchdir, temppath, packager, spec, defs))
 
         # copy the generated SRPMs to their target locations
         targetsrpms = []
@@ -518,7 +531,7 @@ def checkout(pkgdirurl, path=None, revision=None, branch=None,
             append_path=append)
     if path is None:
         path = layout.package_name(pkgdirurl)
-    mirror.info(current)
+    mirror.info(current, write=True)
     svn = SVN()
     svn.checkout(current, path, rev=revision, show=1)
 
