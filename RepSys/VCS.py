@@ -25,11 +25,12 @@ class VCS(object):
 
     def _execVcs(self, *args, **kwargs):
         localcmds = ("add", "revert", "cleanup")
-        if not kwargs.get("show") and args[0] not in localcmds:
-            args = list(args)
-            args.append("--non-interactive")
-        else:
-            kwargs["geterr"] = True
+        if not kwargs.get("show"):
+            if args[0] not in localcmds:
+                args = list(args)
+                args.append("--non-interactive")
+            else:
+                kwargs["geterr"] = True
         kwargs["cleanerr"] = True
         cmdstr = self.vcs_command + " " + " ".join(args)
         try:
