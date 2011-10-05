@@ -25,16 +25,21 @@ class VCS(object):
 
     def _execVcs(self, *args, **kwargs):
         localcmds = ("add", "revert", "cleanup")
-        if not kwargs.get("show"):
+        collecterr = False
+        if kwargs.get("show"):
+            if not kwargs.get("local"):
+                collecterr = True
+        else:
             if args[0] not in localcmds:
                 args = list(args)
                 args.append("--non-interactive")
-            else:
-                kwargs["geterr"] = True
-        kwargs["cleanerr"] = True
-        cmdstr = self.vcs_command + " " + " ".join(args)
+        cleanerr = True
+        cmdargs = [svn_command]
+        cmdargs.extend(args)
         try:
-            return execcmd(cmdstr, **kwargs)
+            return execcmd(cmdargs, show=kwargs.get("show", False),
+                    noerror=kwargs.get("noerror", False),
+                    collecterr=collecterr, cleanerr=cleanerr)
         except Error, e:
             msg = None
             if e.args:
@@ -92,10 +97,10 @@ class VCS(object):
             received_kwargs.has_key("logfile")):
             ret = received_kwargs.get("log")
             if ret is not None:
-                cmd_args.append("-m '%s'" % ret)
+                cmd_args.extend(("-m", ret))
             ret = received_kwargs.get("logfile")
             if ret is not None:
-                cmd_args.append("-F '%s'" % ret)
+                cmd_args.extend(("-F", ret))
 
     def _add_revision(self, cmd_args, received_kwargs, optional=0):
         if not optional or received_kwargs.has_key("rev"):
@@ -106,7 +111,7 @@ class VCS(object):
                 except ValueError:
                     raise Error, "invalid revision provided"
             if ret:
-                cmd_args.append("-r %d" % ret)
+                cmd_args.extend(("-r", str(ret)))
         
     def add(self, path, **kwargs):
         cmd = ["add", path]
@@ -136,23 +141,24 @@ class VCS(object):
         return self._execVcs_success(*cmd, **kwargs)
 
     def export(self, url, targetpath, **kwargs):
-        cmd = ["export", "'%s'" % url, targetpath]
+        cmd = ["export", url, targetpath]
         self._add_revision(cmd, kwargs, optional=1)
         return self._execVcs_success(*cmd, **kwargs)
 
     def checkout(self, url, targetpath, **kwargs):
-        cmd = ["checkout", "'%s'" % url, targetpath]
+        cmd = ["checkout", url, targetpath]
         self._add_revision(cmd, kwargs, optional=1)
         return self._execVcs_success(*cmd, **kwargs)
  
     def clone(self, url, targetpath, **kwargs):
         if self.vcs_supports['clone']:
-            cmd = ["clone", "'%s'" % url, targetpath]
+            cmd = ["clone", url, targetpath]
             return self._execVcs_success(*cmd, **kwargs)
         else:
             raise Error, "%s doesn't support 'clone'" % self.vcs_name
 
     def propset(self, propname, value, targets, **kwargs):
+        cmd = ["propset", propname, str(value), targets]
         cmd = ["propset", propname, "'%s'" % value, targets]
         return self._execVcs_success(*cmd, **kwargs)
 
@@ -176,7 +182,7 @@ class VCS(object):
         cmd = ["info", path]
         status, output = self._execVcs(local=True, *cmd, **kwargs)
         if status == 0 and "Not a versioned resource" not in output:
-            return output.splitlines()
+            return output.strip().splitlines()
         return None
 
     def info2(self, *args, **kwargs):
@@ -297,13 +303,13 @@ class VCS(object):
                 except (ValueError, TypeError):
                     raise Error, "invalid log end revision provided"
             start = start or "HEAD"
-            cmd.append("-r %s:%s" % (start, end))
+            cmd.extend(("-r", "%s:%s" % (start, end)))
         if limit is not None:
             try:
                 limit = int(limit)
             except (ValueError, TypeError):
                 raise Error, "invalid limit number provided"
-            cmd.append("--limit %d" % limit)
+            cmd.extend(("--limit", str(limit)))
         status, output = self._execVcs(*cmd, **kwargs)
         if status != 0:
             return None
@@ -364,7 +370,7 @@ class VCSLook(object):
     def _execVcslook(self, cmd, *args, **kwargs):
         execcmd_args = [self.execcmd, cmd, self.repospath]
         self._add_txnrev(execcmd_args, kwargs)
-        execcmd_args += args
+        execcmd_args.extend(args)
         execcmd_kwargs = {}
         keywords = ["show", "noerror"]
         for key in keywords:
@@ -376,15 +382,15 @@ class VCSLook(object):
         if received_kwargs.has_key("txn"):
             txn = received_kwargs.get("txn")
             if txn is not None:
-                cmd_args += ["-t", txn]
+                cmd_args.extend(("-t", txn))
         elif self.txn is not None:
-            cmd_args += ["-t", self.txn]
+            cmd_args.extend(("-t", self.txn))
         if received_kwargs.has_key("rev"):
             rev = received_kwargs.get("rev")
             if rev is not None:
-                cmd_args += ["-r", rev]
+                cmd_args.extend(("-r", str(rev)))
         elif self.rev is not None:
-            cmd_args += ["-r", self.rev]
+            cmd_args.extend(("-r", str(self.rev)))
 
     def changed(self, **kwargs):
         status, output = self._execVcslook("changed", **kwargs)
