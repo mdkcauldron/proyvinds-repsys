@@ -2,16 +2,9 @@
 from RepSys import Error, config, layout, mirror
 from RepSys.svn import SVN
 from RepSys.command import *
-from RepSys.rpmutil import get_spec, get_submit_info
-from RepSys.util import get_auth, execcmd, get_helper
-import urllib
-import getopt
+from RepSys.rpmutil import get_submit_info
+from RepSys.util import execcmd, get_helper
 import sys
-import re
-import subprocess
-import uuid
-
-import xmlrpclib
 
 HELP = """\
 Usage: repsys submit [OPTIONS] [URL[@REVISION] ...]
@@ -41,8 +34,9 @@ Options:
                (defaults to the host in the URL)
     -p         Port used to connect to the submit host
     -a         Submit all URLs at once (depends on server-side support)
-    -i SID     Use the submit identifier SID
+    -K         Do not replace the %changelog from the spec file
     -h         Show this message
+    --debug    Enable debugging messages (on server-side)
     --distro   The distribution branch where the packages come from
     --define   Defines one variable to be used by the submit scripts 
                in the submit host
@@ -63,18 +57,18 @@ DEFAULT_TARGET = "Cooker"
 def parse_options():
     parser = OptionParser(help=HELP)
     parser.defaults["revision"] = None
+    parser.add_option("--debug", default=False, action="store_true")
     parser.add_option("-t", dest="target", default=None)
     parser.add_option("-l", action="callback", callback=list_targets)
     parser.add_option("-r", dest="revision", type="string", nargs=1)
     parser.add_option("-s", dest="submithost", type="string", nargs=1,
             default=None)
     parser.add_option("-p", dest="port", type="int", default=None)
-    parser.add_option("-i", dest="sid", type="string", nargs=1,
-            default=None)
     parser.add_option("-a", dest="atonce", action="store_true", default=False)
     parser.add_option("--distro", dest="distro", type="string",
             default=None)
     parser.add_option("--define", action="append", default=[])
+    parser.add_option("-K", "--keeplog", action="store_true", default=False)
     opts, args = parser.parse_args()
     if not args:
         name, url, rev = get_submit_info(".")
@@ -164,12 +158,13 @@ def list_targets(option, opt, val, parser):
         raise Error, "no submit host defined in repsys.conf"
     createsrpm = get_helper("create-srpm")
     #TODO make it configurable
-    command = "ssh %s %s --list" % (host, createsrpm)
-    execcmd(command, show=True)
-    sys.exit(0)
+    args = ["ssh", host, createsrpm, "--list"]
+    execcmd(args, show=True)
+    sys.exit(0) # it is invoked via optparse callback, thus we need to
+                # force ending the script
 
 def submit(urls, target, define=[], submithost=None, port=None,
-        atonce=False, sid=None):
+        atonce=False, debug=False, keeplog=False):
     if submithost is None:
         submithost = config.get("submit", "host")
         if submithost is None:
@@ -182,9 +177,10 @@ def submit(urls, target, define=[], submithost=None, port=None,
     createsrpm = get_helper("create-srpm")
     baseargs = ["ssh", "-p", str(port), submithost, createsrpm,
             "-t", target]
-    if not sid:
-        sid = uuid.uuid4()
-    define.append("sid=%s" % sid)
+    if debug:
+        baseargs.append("--debug")
+    if keeplog:
+        baseargs.append("--keeplog")
     for entry in reversed(define):
         baseargs.append("--define")
         baseargs.append(entry)
@@ -201,12 +197,12 @@ def submit(urls, target, define=[], submithost=None, port=None,
     else:
         cmdsargs.extend((baseargs + [url]) for url in urls)
     for cmdargs in cmdsargs:
-        command = subprocess.list2cmdline(cmdargs)
-        status, output = execcmd(command)
+        status, output = execcmd(cmdargs, noerror=1)
         if status == 0:
             print "Package submitted!"
         else:
             sys.stderr.write(output)
+            sys.stderr.write("\n")
             sys.exit(status)
 
 def main():

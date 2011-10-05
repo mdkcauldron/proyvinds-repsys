@@ -1,4 +1,4 @@
-from RepSys.util import execcmd, get_auth
+from RepSys.util import execcmd
 from RepSys.VCS import *
 import sys
 import os

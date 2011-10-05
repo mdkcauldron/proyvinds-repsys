@@ -2,86 +2,83 @@
 
 from RepSys import Error, config
 
+import shlex
 import subprocess
-import getpass
+import select
 import sys
 import os
 import re
-import logging
 from cStringIO import StringIO
-#import commands
 
-log = logging.getLogger("repsys")
+class CommandError(Error):
 
-# Our own version of commands' getstatusoutput(). We have a commands
-# module directory, so we can't import Python's standard module
-def commands_getstatusoutput(cmd):
-    """Return (status, output) of executing cmd in a shell."""
-    import os
-    pipe = os.popen('{ ' + cmd + '; } 2>&1', 'r')
-    text = pipe.read()
-    sts = pipe.close()
-    if sts is None: sts = 0
-    if text[-1:] == '\n': text = text[:-1]
-    return sts, text
+    def __init__(self, cmdline, status, output):
+        self.cmdline = cmdline
+        self.status = status
+        self.output = output
 
-def execcmd(*cmd, **kwargs):
-    cmdstr = " ".join(cmd)
-    if kwargs.get("show"):
-        if kwargs.get("geterr"):
-            err = StringIO()
-            pipe = subprocess.Popen(cmdstr, shell=True,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            of = pipe.stdout.fileno()
-            ef = pipe.stderr.fileno()
-            while True:
-                odata = os.read(of, 8192)
-                sys.stdout.write(odata)
-                edata = os.read(ef, 8192)
-                err.write(edata)
-                sys.stderr.write(edata)
-                status = pipe.poll()
-                if status is not None and not (odata and edata):
-                    break
-            output = err.getvalue()
-        else:
-            status = os.system(cmdstr)
-            output = ""
+    def __str__(self):
+        return "command failed: %s\n%s\n" % (self.cmdline, self.output)
+
+def execcmd(cmd_args_or_str, show=False, collecterr=False, cleanerr=False,
+        noerror=False, strip=True):
+    assert (collecterr and show) or not collecterr, ("execcmd is implemented to "
+            "handle collecterr=True only if show=True")
+
+    # split command args
+    if isinstance(cmd_args_or_str, basestring):
+        cmdargs = shlex.split(cmd_args_or_str)
     else:
-        status, output = commands_getstatusoutput(
-                "LANG=C LANGUAGE=C LC_ALL=C "+cmdstr)
-    verbose = config.getbool("global", "verbose", 0)
-    if status != 0 and not kwargs.get("noerror"):
-        if kwargs.get("cleanerr") and not verbose:
-            raise Error, output
-        else:
-            raise Error, "command failed: %s\n%s\n" % (cmdstr, output)
-    if verbose:
-        print cmdstr
-        sys.stdout.write(output)
-    return status, output
+        cmdargs = cmd_args_or_str[:]
 
-def get_auth(username=None, password=None):
-    set_username = 1
-    set_password = 1
-    if not username:
-        username = config.get("auth", "username")
-        if not username:
-            username = raw_input("username: ")
+    stdout = None
+    stderr = None
+    env = {}
+    env.update(os.environ)
+    if not show or (show and collecterr):
+        env.update({"LANG": "C", "LANGUAGE": "C", "LC_ALL": "C"})
+        stdout = subprocess.PIPE
+        if collecterr:
+            stderr = subprocess.PIPE
         else:
-            set_username = 0
-    if not password:
-        password = config.get("auth", "password")
-        if not password:
-            password = getpass.getpass("password: ")
-        else:
-            set_password = 0
-    if set_username:
-        config.set("auth", "username", username)
-    if set_password:
-        config.set("auth", "password", password)
-    return username, password
+            stderr = subprocess.STDOUT
 
+    proc = subprocess.Popen(cmdargs, shell=False, stdout=stdout,
+            stderr=stderr, env=env)
+
+    output = ""
+
+    if show and collecterr:
+        error = StringIO()
+        wl = []
+        outfd = proc.stdout.fileno()
+        errfd = proc.stderr.fileno()
+        rl = [outfd, errfd]
+        xl = wl
+        while proc.poll() is None:
+            mrl, _, _ = select.select(rl, wl, xl, 0.5)
+            for fd in mrl:
+                data = os.read(fd, 8192)
+                if fd == errfd:
+                    error.write(data)
+                    sys.stderr.write(data)
+                else:
+                    sys.stdout.write(data)
+        output = error.getvalue()
+    else:
+        proc.wait()
+        if proc.stdout is not None:
+            output = proc.stdout.read()
+            if strip:
+                output = output.rstrip()
+
+    if (not noerror) and proc.returncode != 0:
+        if cleanerr:
+            msg = output
+        cmdline = subprocess.list2cmdline(cmdargs)
+        raise CommandError(cmdline, proc.returncode, output)
+
+    return proc.returncode, output
 
 def mapurl(url):
     """Maps a url following the regexp provided by the option url-map in
