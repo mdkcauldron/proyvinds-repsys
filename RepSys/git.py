@@ -1,5 +1,5 @@
 from RepSys import Error, config
-from RepSys.util import commands_getstatusoutput, execcmd, get_auth
+from RepSys.util import commands_getstatusoutput, execcmd
 from RepSys.VCS import *
 from os.path import basename, dirname
 from os import chdir, getcwd
