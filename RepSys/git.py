@@ -1,5 +1,5 @@
 from RepSys import Error, config
-from RepSys.util import commands_getstatusoutput, execcmd
+from RepSys.util import execcmd
 from RepSys.VCS import *
 from os.path import basename, dirname
 from os import chdir, getcwd
@@ -28,7 +28,7 @@ class GIT(VCS):
             # To speed things up on huge repositories, we'll just grab all the
             # revision numbers for this specific directory and grab these only
             # in stead of having to go through each and every revision...
-            retval, result = commands_getstatusoutput("svn log --stop-on-copy --xml %s" % url)
+            retval, result = execcmd("svn log --stop-on-copy --xml %s" % url)
             if retval:
                 return retval
             parser = ElementTree.XMLTreeBuilder()
