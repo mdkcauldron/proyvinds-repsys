@@ -34,7 +34,7 @@ class VCS(object):
                 args = list(args)
                 args.append("--non-interactive")
         cleanerr = True
-        cmdargs = [svn_command]
+        cmdargs = [self.vcs_command]
         cmdargs.extend(args)
         try:
             return execcmd(cmdargs, show=kwargs.get("show", False),
